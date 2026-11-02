@@ -1,0 +1,759 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Lightning Voice Assistant</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: Inter, "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+      --panel: rgba(18, 19, 19, .97);
+      --header: #1a1b1b;
+      --raised: #1c1e1e;
+      --input: #111313;
+      --border: #2b2d2c;
+      --accent: #56d6cf;
+      --accent-soft: #8ce9e0;
+      --text: #edf4fa;
+      --body-text: #c8d0d1;
+      --muted: #aab1ba;
+      --danger: #ff8b87;
+      --warning: #c8d0d1;
+      --success: #56d6cf;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body { padding: 0; }
+
+    button, input { font: inherit; }
+
+    button {
+      border: 0;
+      color: inherit;
+      cursor: pointer;
+      transition: background-color .16s ease, color .16s ease,
+        border-color .16s ease, transform .16s ease, opacity .16s ease;
+    }
+
+    button:focus-visible, input:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+
+    #app {
+      display: flex;
+      width: min(520px, 100vw);
+      height: min(640px, 100vh);
+      min-height: min(400px, 100vh);
+      margin: 0 auto;
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #292b2b;
+      border-radius: 22px;
+      background: var(--panel);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .58), 0 8px 24px rgba(0, 0, 0, .25);
+      backdrop-filter: blur(18px);
+    }
+
+    .topbar {
+      display: flex;
+      min-height: 66px;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--header);
+      user-select: none;
+    }
+
+    .brand, .top-actions, .brand-copy, .state-row, .equalizer, .question-heading,
+    .answer-heading, .footer-row, .footer-leading, .footer-trailing, .input-row,
+    .button-content, .modal-title-row {
+      display: flex;
+      align-items: center;
+    }
+
+    .brand { min-width: 0; gap: 11px; }
+
+    .brand-mark {
+      display: grid;
+      width: 36px;
+      height: 36px;
+      flex: 0 0 auto;
+      place-items: center;
+      border: 1px solid #39403f;
+      border-radius: 12px;
+      background: #222625;
+      color: var(--accent);
+    }
+
+    .brand-copy { min-width: 0; align-items: flex-start; flex-direction: column; gap: 3px; }
+
+    .brand-name, .section-label {
+      margin: 0;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: .14em;
+      line-height: 1.2;
+      text-transform: uppercase;
+    }
+
+    .brand-name { color: var(--accent-soft); }
+    .state-row { gap: 6px; }
+    .state-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+    .state-label { font-size: 12px; font-weight: 600; }
+    .top-actions { flex: 0 0 auto; gap: 8px; }
+
+    .equalizer {
+      height: 32px;
+      gap: 4px;
+      padding: 0 10px;
+      border: 1px solid #303433;
+      border-radius: 999px;
+      background: var(--input);
+    }
+
+    .equalizer-bar {
+      width: 3px;
+      height: 6px;
+      border-radius: 4px;
+      background: var(--accent);
+      animation: equalize 1s ease-in-out infinite;
+    }
+
+    .equalizer-bar:nth-child(2) { animation-delay: .12s; }
+    .equalizer-bar:nth-child(3) { animation-delay: .24s; }
+    .equalizer-bar:nth-child(4) { animation-delay: .36s; }
+    .equalizer-bar:nth-child(5) { animation-delay: .48s; }
+    #app.is-listening .equalizer { border-color: #3b625e; }
+    #app.is-listening .equalizer-bar { animation-duration: .62s; }
+
+    @keyframes equalize {
+      0%, 100% { height: 6px; opacity: .55; }
+      50% { height: 17px; opacity: 1; }
+    }
+
+    .mic-button, .answer-button {
+      display: inline-flex;
+      min-height: 36px;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 15px;
+      border-radius: 999px;
+      background: var(--accent);
+      color: #07141e;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .mic-button:hover, .answer-button:hover { background: var(--accent-soft); }
+    .mic-button:active, .answer-button:active, .clear-button:active { transform: scale(.97); }
+    .mic-button:disabled { cursor: default; opacity: .68; }
+
+    .icon-button {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 50%;
+      background: transparent;
+      color: #929b9d;
+    }
+
+    .icon-button:hover { background: #292c2c; color: var(--text); }
+
+    main {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding: 18px 18px 14px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    main::-webkit-scrollbar, .answer-card::-webkit-scrollbar,
+    .document-list::-webkit-scrollbar { display: none; width: 0; }
+
+    .question-heading, .answer-heading {
+      min-height: 17px;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .question-heading .section-label { color: var(--accent-soft); }
+    .answer-heading .section-label { color: #c0c6c6; }
+    .timestamp, .model-name, .source-line, .shortcut, .footer-status {
+      color: var(--muted);
+      font-size: 10px;
+    }
+
+    .timestamp { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .question-card {
+      padding: 13px 15px 11px;
+      border: 1px solid #303332;
+      border-left: 2px solid var(--accent);
+      border-radius: 17px;
+      background: var(--raised);
+    }
+
+    .question-text {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.55;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    .source-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 11px;
+      padding-top: 9px;
+      border-top: 1px solid var(--border);
+    }
+
+    .source-line { line-height: 1.4; }
+
+    .answer-section { margin-top: 17px; }
+    .answer-heading { justify-content: space-between; }
+    .answer-heading-left { display: flex; align-items: center; gap: 8px; }
+    .heading-rule { width: 19px; height: 1px; background: #3b4241; }
+
+    .answer-card {
+      min-height: 260px;
+      max-height: 100%;
+      overflow: auto;
+      padding: 16px 17px;
+      border: 1px solid #2d302f;
+      border-radius: 17px;
+      background: #141616;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .answer-text {
+      margin: 0;
+      color: var(--body-text);
+      font-size: 13px;
+      line-height: 1.62;
+      overflow-wrap: anywhere;
+      white-space: pre-wrap;
+    }
+
+    footer {
+      flex: 0 0 auto;
+      padding: 11px 16px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--header);
+    }
+
+    .footer-row { min-height: 28px; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+    .footer-leading, .footer-trailing { min-width: 0; gap: 8px; }
+    .footer-trailing { flex: 0 0 auto; }
+
+    .clear-button {
+      padding: 6px 12px;
+      border: 1px solid #363a39;
+      border-radius: 999px;
+      background: #131515;
+      color: var(--body-text);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .clear-button:hover { background: #292c2c; }
+    .docs-button { padding: 4px 2px; background: transparent; color: var(--accent-soft); font-size: 10px; font-weight: 700; }
+    .docs-button:hover { color: var(--text); }
+    .shortcut { white-space: nowrap; }
+    .footer-model { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    .input-row {
+      min-height: 44px;
+      gap: 9px;
+      padding: 4px 5px 4px 11px;
+      border: 1px solid #353938;
+      border-radius: 14px;
+      background: var(--input);
+      transition: border-color .16s ease, box-shadow .16s ease;
+    }
+
+    .input-row:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(86, 214, 207, .14);
+    }
+
+    #prompt-input {
+      width: 0;
+      min-width: 0;
+      flex: 1 1 auto;
+      padding: 7px 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 12px;
+    }
+
+    #prompt-input::placeholder { color: #929b9d; opacity: 1; }
+    #prompt-input:focus-visible { outline: 0; }
+    .answer-button { min-height: 32px; padding: 0 12px; font-size: 11px; }
+
+    .footer-status {
+      min-height: 15px;
+      margin: 7px 2px 0;
+      overflow: hidden;
+      line-height: 1.4;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .modal-backdrop {
+      position: fixed;
+      z-index: 5;
+      display: grid;
+      padding: 16px;
+      background: rgba(0, 0, 0, .62);
+      inset: 0;
+      place-items: center;
+      backdrop-filter: blur(5px);
+    }
+
+    .modal-backdrop[hidden] { display: none; }
+
+    .docs-modal {
+      display: flex;
+      width: min(430px, 100%);
+      max-height: min(470px, calc(100vh - 32px));
+      flex-direction: column;
+      overflow: hidden;
+      border: 1px solid #353938;
+      border-radius: 20px;
+      background: #151717;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, .55);
+      animation: modal-in .18s ease-out both;
+    }
+
+    @keyframes modal-in {
+      from { opacity: 0; transform: translateY(7px) scale(.985); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .modal-header { padding: 17px 18px 12px; }
+    .modal-title-row { justify-content: space-between; gap: 8px; }
+    .modal-title { margin: 0; font-size: 14px; font-weight: 700; }
+    .modal-copy { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .document-list {
+      min-height: 70px;
+      max-height: 235px;
+      overflow: auto;
+      padding: 0 13px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+    }
+
+    .document-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 42px;
+      padding: 7px 9px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      color: var(--body-text);
+      font-size: 11px;
+    }
+
+    .document-row:hover { border-color: #343a39; background: #1c1e1e; }
+    .document-row input { accent-color: var(--accent); }
+    .document-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .empty-documents { padding: 17px 10px; color: var(--muted); font-size: 11px; text-align: center; }
+    .docs-status { min-height: 17px; margin: 5px 18px 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+    .docs-status[data-tone="error"] { color: var(--danger); }
+    .modal-actions { display: flex; gap: 8px; padding: 12px 18px 16px; }
+    .modal-action {
+      min-height: 34px;
+      padding: 0 12px;
+      border: 1px solid #363a39;
+      border-radius: 999px;
+      background: #202222;
+      color: var(--body-text);
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .modal-action:hover { background: #292c2c; color: var(--text); }
+    .modal-action.primary { border-color: transparent; background: var(--accent); color: #07141e; }
+    .modal-action.primary:hover { background: var(--accent-soft); }
+    .modal-action:disabled { cursor: default; opacity: .55; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+
+    @media (max-width: 390px) {
+      .topbar { padding-right: 11px; padding-left: 11px; }
+      main { padding-right: 12px; padding-left: 12px; }
+      footer { padding-right: 11px; padding-left: 11px; }
+      .shortcut { display: none; }
+      .answer-card { min-height: 180px; }
+    }
+
+    @media (max-height: 480px) {
+      .topbar { min-height: 55px; padding-top: 8px; padding-bottom: 8px; }
+      main { padding-top: 10px; padding-bottom: 9px; }
+      .answer-section { margin-top: 10px; }
+      .answer-card { min-height: 100px; padding: 11px 13px; }
+      footer { padding-top: 7px; padding-bottom: 7px; }
+      .footer-status { margin-top: 4px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <section id="app" aria-label="Lightning Voice Assistant">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <path d="M13.2 2.8 5.8 13h5.1l-.5 8.2L18.2 11h-5.1l.1-8.2Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8"/>
+          </svg>
+        </div>
+        <div class="brand-copy">
+          <h1 class="brand-name">Lightning</h1>
+          <div class="state-row">
+            <span id="state-dot" class="state-dot" aria-hidden="true"></span>
+            <span id="state-label" class="state-label">Ready</span>
+          </div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="equalizer" role="img" aria-label="Audio activity indicator">
+          <span class="equalizer-bar"></span><span class="equalizer-bar"></span>
+          <span class="equalizer-bar"></span><span class="equalizer-bar"></span>
+          <span class="equalizer-bar"></span>
+        </div>
+        <button id="mic-button" class="mic-button" type="button" aria-label="Start listening">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <rect x="9" y="2.5" width="6" height="12" rx="3" stroke="currentColor" stroke-width="1.8"/>
+            <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5m-4 0h8" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+          </svg>
+          <span id="mic-label">Listen</span>
+        </button>
+        <button id="close-button" class="icon-button" type="button" aria-label="Close assistant">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <section aria-labelledby="question-label">
+        <div class="question-heading">
+          <h2 id="question-label" class="section-label">Question detected</h2>
+          <span id="question-time" class="timestamp">Waiting for audio</span>
+        </div>
+        <div class="question-card">
+          <p id="question-text" class="question-text">Your latest question will appear here.</p>
+          <div class="source-row">
+            <span id="question-source" class="source-line">Source: voice transcription</span>
+            <span class="source-line" aria-hidden="true">—</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="answer-section" aria-labelledby="answer-label">
+        <div class="answer-heading">
+          <div class="answer-heading-left">
+            <span class="heading-rule" aria-hidden="true"></span>
+            <h2 id="answer-label" class="section-label">Lightning answer</h2>
+          </div>
+          <span id="model-name" class="model-name">Local model</span>
+        </div>
+        <div id="answer-card" class="answer-card" role="region" aria-label="Lightning answer" tabindex="0">
+          <p id="answer-text" class="answer-text">Your answer will appear here after a question is captured.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="footer-row">
+        <div class="footer-leading">
+          <button id="clear-button" class="clear-button" type="button">Clear</button>
+          <span id="model-shortcut" class="shortcut">Local model · Ctrl + Space</span>
+        </div>
+        <div class="footer-trailing">
+          <button id="docs-button" class="docs-button" type="button">Docs <span id="document-count">0</span></button>
+          <span class="shortcut">Ctrl + Shift + Space · Show</span>
+        </div>
+      </div>
+      <form id="question-form" class="input-row">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v9a2.5 2.5 0 0 1-2.5 2.5H9l-5 4v-15.5Z" stroke="#929b9d" stroke-linejoin="round" stroke-width="1.6"/>
+        </svg>
+        <label class="visually-hidden" for="prompt-input">Ask a follow-up question</label>
+        <input id="prompt-input" type="text" autocomplete="off" placeholder="Ask a follow-up question...">
+        <button id="answer-button" class="answer-button" type="submit">
+          <span>Answer</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M5 12h14m-6-6 6 6-6 6" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+          </svg>
+        </button>
+      </form>
+      <p id="status-text" class="footer-status" role="status" aria-live="polite">Ready when you are.</p>
+    </footer>
+  </section>
+
+  <div id="docs-backdrop" class="modal-backdrop" hidden>
+    <section class="docs-modal" role="dialog" aria-modal="true" aria-labelledby="docs-title">
+      <div class="modal-header">
+        <div class="modal-title-row">
+          <h2 id="docs-title" class="modal-title">Your reference documents</h2>
+          <button id="docs-close" class="icon-button" type="button" aria-label="Close documents">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="m6 6 12 12M18 6 6 18" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+            </svg>
+          </button>
+        </div>
+        <p class="modal-copy">Add local documents to ground answers in your own knowledge. Supports TXT, Markdown, PDF, and DOCX.</p>
+      </div>
+      <div id="document-list" class="document-list"></div>
+      <p id="docs-status" class="docs-status" role="status" aria-live="polite"></p>
+      <div class="modal-actions">
+        <button id="docs-add" class="modal-action primary" type="button">Add documents</button>
+        <button id="docs-remove" class="modal-action" type="button" disabled>Remove selected</button>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    (() => {
+      const byId = (id) => document.getElementById(id);
+      const api = (method, ...args) => {
+        if (!window.pywebview || !window.pywebview.api) {
+          return Promise.reject(new Error("The assistant bridge is not ready."));
+        }
+        return window.pywebview.api[method](...args);
+      };
+
+      function callBackend(method, ...args) {
+        return api(method, ...args).catch((error) => {
+          const status = byId("status-text");
+          status.textContent = error.message || "The assistant could not complete that action.";
+          status.style.color = "var(--danger)";
+          return null;
+        });
+      }
+
+      function showStatus(message, tone) {
+        const status = byId("docs-status");
+        status.textContent = message || "";
+        status.dataset.tone = tone || "normal";
+      }
+
+      function renderDocuments(items) {
+        const list = byId("document-list");
+        list.replaceChildren();
+        if (!items.length) {
+          const empty = document.createElement("p");
+          empty.className = "empty-documents";
+          empty.textContent = "No documents added yet.";
+          list.append(empty);
+        } else {
+          for (const item of items) {
+            const label = document.createElement("label");
+            label.className = "document-row";
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.value = item.name;
+            const name = document.createElement("span");
+            name.className = "document-name";
+            name.textContent = item.name;
+            label.append(checkbox, name);
+            list.append(label);
+          }
+        }
+        byId("document-count").textContent = String(items.length);
+        byId("docs-remove").disabled = items.length === 0;
+      }
+
+      async function refreshDocuments() {
+        try {
+          const items = await api("list_documents");
+          renderDocuments(items);
+        } catch (error) {
+          showStatus(error.message || "Could not load documents.", "error");
+        }
+      }
+
+      function openDocuments() {
+        byId("docs-backdrop").hidden = false;
+        showStatus("");
+        void refreshDocuments();
+        byId("docs-add").focus();
+      }
+
+      function updateElement(id, changes, textTarget) {
+        const element = byId(id);
+        if (!element) throw new Error(`Missing UI element: ${id}`);
+        if (Object.prototype.hasOwnProperty.call(changes, "text")) {
+          const target = textTarget ? byId(textTarget) : element;
+          if (!target) throw new Error(`Missing UI text target: ${textTarget}`);
+          target.textContent = String(changes.text);
+        }
+        if (Object.prototype.hasOwnProperty.call(changes, "fg")) element.style.color = changes.fg;
+        if (Object.prototype.hasOwnProperty.call(changes, "bg")) element.style.backgroundColor = changes.bg;
+        if (Object.prototype.hasOwnProperty.call(changes, "state")) {
+          element.disabled = changes.state === "disabled";
+        }
+        if (id === "mic-button" && Object.prototype.hasOwnProperty.call(changes, "text")) {
+          const isListening = /stop|cancel|transcrib/i.test(changes.text);
+          element.setAttribute("aria-label", changes.text);
+          element.classList.toggle("is-listening", isListening);
+          byId("app").classList.toggle("is-listening", isListening);
+        }
+      }
+
+      window.LightningUI = {
+        updateElement,
+        setAnswer(text) {
+          const answer = byId("answer-text");
+          answer.textContent = text;
+          byId("answer-card").scrollTop = byId("answer-card").scrollHeight;
+        },
+        appendAnswer(text) {
+          const answer = byId("answer-text");
+          answer.textContent += text;
+          byId("answer-card").scrollTop = byId("answer-card").scrollHeight;
+        },
+        setDocumentCount(count) {
+          byId("document-count").textContent = String(count);
+        },
+        setModel(name) {
+          byId("model-name").textContent = name;
+        },
+        setRecording(recording) {
+          byId("app").classList.toggle("is-listening", Boolean(recording));
+        },
+        openDocuments,
+        renderDocuments,
+        showDocumentStatus(message, tone) {
+          showStatus(message, tone);
+        },
+        closeDocuments() {
+          byId("docs-backdrop").hidden = true;
+          byId("docs-button").focus();
+        },
+      };
+
+      byId("mic-button").addEventListener("click", () => callBackend("toggle_recording"));
+      byId("clear-button").addEventListener("click", () => callBackend("clear_content"));
+      byId("docs-button").addEventListener("click", openDocuments);
+      byId("close-button").addEventListener("click", () => callBackend("close_app"));
+      byId("docs-close").addEventListener("click", () => window.LightningUI.closeDocuments());
+      byId("docs-backdrop").addEventListener("click", (event) => {
+        if (event.target === byId("docs-backdrop")) window.LightningUI.closeDocuments();
+      });
+
+      byId("question-form").addEventListener("submit", (event) => {
+        event.preventDefault();
+        const input = byId("prompt-input");
+        const prompt = input.value.trim();
+        if (!prompt) return;
+        input.value = "";
+        callBackend("submit_question", prompt);
+      });
+
+      byId("docs-add").addEventListener("click", async () => {
+        const button = byId("docs-add");
+        button.disabled = true;
+        showStatus("Choose documents to add…");
+        try {
+          const result = await api("choose_and_import_documents");
+          renderDocuments(result.documents);
+          showStatus(result.message, result.error ? "error" : "normal");
+        } catch (error) {
+          showStatus(error.message || "Could not add documents.", "error");
+        } finally {
+          button.disabled = false;
+        }
+      });
+
+      byId("docs-remove").addEventListener("click", async () => {
+        const selected = [...byId("document-list").querySelectorAll("input:checked")]
+          .map((checkbox) => checkbox.value);
+        if (!selected.length) return;
+        if (!window.confirm(`Remove ${selected.length} selected document(s) from this computer?`)) {
+          return;
+        }
+        const button = byId("docs-remove");
+        button.disabled = true;
+        try {
+          const result = await api("remove_documents", selected);
+          renderDocuments(result.documents);
+          showStatus(result.message, result.error ? "error" : "normal");
+        } catch (error) {
+          showStatus(error.message || "Could not remove documents.", "error");
+        } finally {
+          button.disabled = byId("document-list").querySelectorAll("input").length === 0;
+        }
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          if (!byId("docs-backdrop").hidden) {
+            window.LightningUI.closeDocuments();
+          } else {
+            callBackend("clear_content");
+          }
+        } else if (event.ctrlKey && event.shiftKey && event.code === "Space") {
+          event.preventDefault();
+          callBackend("show_assistant");
+        } else if (event.ctrlKey && event.code === "Space") {
+          event.preventDefault();
+        }
+      });
+
+      window.addEventListener("pywebviewready", async () => {
+        try {
+          const configuration = await api("ready");
+          window.LightningUI.setModel(configuration.model);
+          if (configuration.platform === "darwin") {
+            byId("model-shortcut").textContent = "Use Listen button";
+            document.querySelectorAll(".footer-trailing .shortcut").forEach((item) => {
+              item.hidden = true;
+            });
+          }
+          await api("fit_to_screen", window.screen.availWidth, window.screen.availHeight);
+        } catch (error) {
+          byId("status-text").textContent = error.message || "The assistant could not initialize.";
+          byId("status-text").style.color = "var(--danger)";
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
