@@ -34,7 +34,7 @@ jobs:
           path: dist/LightningAssistant/
 
   build-macos:
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
