@@ -9,3 +9,9 @@ internet access to download Python/Ollama if missing and install packages.
 First setup can take a while. Allow at least 8 GB of free disk space.
 
 After setup, double-click Start Assistant.bat to open it again.
+
+To add your own reference material, open the assistant and choose Docs. Add
+TXT, Markdown, searchable PDF, or DOCX files; relevant passages are then used
+when answering questions. Imported files stay on this computer and can be
+removed from the same Docs window. Scanned PDFs need OCR before they can be
+used.

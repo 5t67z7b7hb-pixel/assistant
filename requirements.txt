@@ -3,7 +3,8 @@ scipy
 openai-whisper
 requests
 numpy
-PyAudioWPatch
+PyAudioWPatch; platform_system == "Windows"
 soundcard>=0.4.6
 faster-whisper
 keyboard
+pypdf>=5.0
