@@ -1,0 +1,9 @@
+sounddevice
+scipy
+openai-whisper
+requests
+numpy
+PyAudioWPatch
+soundcard>=0.4.6
+faster-whisper
+keyboard

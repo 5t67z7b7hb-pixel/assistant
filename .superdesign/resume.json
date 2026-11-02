@@ -1,0 +1,30 @@
+{
+    "schemaVersion":  1,
+    "targets":  {
+                    "assistant-widget":  {
+                                             "targetKind":  "existing-ui",
+                                             "projectId":  "a37054eb-df3a-4149-9719-1a7466a89a41",
+                                             "activeDraftId":  "7f989d15-221c-42ab-b981-886423557eb6",
+                                             "designSystemPath":  ".superdesign/design-system.md",
+                                             "contextFiles":  [
+                                                                  ".superdesign/design-system.md",
+                                                                  "main.py:387:850"
+                                                              ],
+                                             "fingerprints":  {
+                                                                  ".superdesign/design-system.md":  "1C166DA8B213D7C5F5A53BCBE1FA30934C1F29CC4C1636FFD785A52110F565D9",
+                                                                  "main.py":  "ECC1AA0D26C7269A452F2D26612AB304C7F7D6499E168DD899508B5AB36F32E2"
+                                                              },
+                                             "components":  [
+
+                                                            ],
+                                             "drafts":  {
+                                                            "7f989d15-221c-42ab-b981-886423557eb6":  {
+                                                                                                         "title":  "Enhanced Lightning Assistant Widget",
+                                                                                                         "visualDirection":  "480x434 dark navy/teal widget with rounded controls and hidden scrollbar",
+                                                                                                         "currentVersion":  5
+                                                                                                     }
+                                                        },
+                                             "updatedAt":  "2026-11-02T07:00:33+05:30"
+                                         }
+                }
+}
