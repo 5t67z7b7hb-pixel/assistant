@@ -1,38 +1,60 @@
-name: Build macOS Binary
+name: Build Production Apps
 
 on:
   push:
-    branches: [ main, master ]
-  workflow_dispatch:
+    branches: [ main ]
+    tags:
+      - 'v*'
 
 jobs:
-  build-mac:
-    runs-on: macos-latest
-
+  build-windows:
+    runs-on: windows-latest
     steps:
-    - name: Check out repository
-      uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pywebview requests dodopayments
 
-    - name: Build macOS App Bundle
-      run: python build_mac.py
+      - name: Build Windows Executable
+        run: |
+          pyinstaller --noconsole --onedir --name="LightningAssistant" main.py
 
-    - name: Compress App for Web Download
-      run: |
-        cd dist
-        zip -r VoiceAssistantSetup-macOS.zip VoiceAssistantSetup.app
+      - name: Archive Windows Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Portable-Build
+          path: dist/LightningAssistant/
 
-    - name: Upload macOS Zip Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: macOS-Setup-Zip
-        path: dist/VoiceAssistantSetup-macOS.zip
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pywebview requests dodopayments
+
+      - name: Build macOS App Bundle
+        run: |
+          pyinstaller --noconsole --onedir --name="LightningAssistant" main.py
+
+      - name: Archive macOS Build
+        uses: actions/upload-artifact@v4
+        with:
+          name: macOS-Portable-Build
+          path: dist/LightningAssistant/
