@@ -21,11 +21,11 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir pyinstaller pywebview requests dodopayments
+          pip install --no-cache-dir -r requirements.txt pyinstaller
 
       - name: Build Windows Executable
         run: |
-          pyinstaller -y --noconsole --onedir --name="LightningAssistant" main.py
+          pyinstaller -y LightningAssistant.spec
 
       - name: Archive Windows Build
         uses: actions/upload-artifact@v4
@@ -47,11 +47,11 @@ jobs:
       - name: Install Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install --no-cache-dir pyinstaller pywebview requests dodopayments
+          pip install --no-cache-dir -r requirements.txt pyinstaller
 
       - name: Build macOS App Bundle
         run: |
-          pyinstaller -y --noconsole --onedir --name="LightningAssistant" main.py
+          pyinstaller -y LightningAssistant.spec
 
       - name: Archive macOS Build
         uses: actions/upload-artifact@v4

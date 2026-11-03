@@ -1,12 +1,19 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import sys
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[],
-    hiddenimports=[],
+    datas=[('config.ini', '.')],
+    hiddenimports=['capture_worker', 'transcribe_worker'] + (
+        ['keyring.backends.Windows']
+        if sys.platform == 'win32'
+        else ['keyring.backends.macOS']
+        if sys.platform == 'darwin'
+        else []
+    ),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

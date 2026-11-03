@@ -2,6 +2,7 @@ sounddevice
 scipy
 openai-whisper
 requests
+keyring
 numpy
 PyAudioWPatch; platform_system == "Windows"
 soundcard>=0.4.6

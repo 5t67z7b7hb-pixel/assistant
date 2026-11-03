@@ -5,8 +5,11 @@ from tkinter import filedialog, messagebox
 import sys
 import threading
 import requests
+import webbrowser
 import json
 import configparser
+from datetime import datetime
+from urllib.parse import urlparse
 import math
 import tempfile
 import wave
@@ -28,6 +31,15 @@ from user_documents import (
     list_documents,
     remove_document,
     search_documents,
+)
+from license_client import (
+    LicenseError,
+    check_entitlement,
+    clear_access_token,
+    create_device_checkout,
+    get_access_token,
+    get_device_id,
+    store_access_token,
 )
 
 OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
@@ -639,6 +651,16 @@ class LightningStealthAssistant:
         self.transcription_start_lock = threading.Lock()
         self.transcription_error = None
         self.transcription_backend = "speech model"
+        self.device_id = None
+        self.access_token = None
+        self.license_window = None
+        self.license_status_label = None
+        self.license_email_entry = None
+        self.license_valid = False
+        self.license_expires_at = None
+        self.license_expiry_job = None
+        self.license_refresh_job = None
+        self.license_workers_started = False
         self._answer_resize_job = None
         self._answer_base_window_height = 434
         self._answer_base_visible_lines = None
@@ -658,8 +680,400 @@ class LightningStealthAssistant:
         self.setup_global_hotkeys()
         self.schedule_ui(self._poll_hotkey_actions, delay=50)
         self.root.protocol("WM_DELETE_WINDOW", self.close_app)
-        self.start_transcription_worker()
-        self.start_capture_worker()
+        self.schedule_ui(self.begin_entitlement_check, delay=0)
+
+    def begin_entitlement_check(self):
+        if self._closing:
+            return
+        self._set_assistant_state("Checking access", self.ui_colors["warning"])
+        threading.Thread(target=self.load_device_entitlement, daemon=True).start()
+
+    def load_device_entitlement(self):
+        try:
+            self.device_id = get_device_id()
+            self.access_token = get_access_token(self.device_id)
+            if not self.access_token:
+                self.schedule_ui(
+                    lambda: self.show_license_gate(
+                        "Start a free 7-day trial or subscribe to continue."
+                    )
+                )
+                return
+            self.refresh_device_entitlement()
+        except LicenseError as error:
+            self.schedule_ui(lambda message=str(error): self.show_license_gate(message))
+
+    def refresh_device_entitlement(self):
+        if self._closing:
+            return
+        try:
+            if not self.access_token:
+                self.schedule_ui(
+                    lambda: self.show_license_gate(
+                        "Start a free 7-day trial or subscribe to continue."
+                    )
+                )
+                return
+            status, data = check_entitlement(self.access_token)
+            if status == 401:
+                clear_access_token(self.device_id)
+                self.access_token = None
+                self.schedule_ui(
+                    lambda: self.show_license_gate(
+                        "The saved access token is no longer valid. Start or continue checkout."
+                    )
+                )
+                return
+            if data.get("entitled"):
+                self.schedule_ui(lambda result=data: self.activate_device_entitlement(result))
+                return
+            self.schedule_ui(
+                lambda result=data: self.revoke_device_access(
+                    "Your trial or subscription is not active. Complete checkout or subscribe to continue."
+                )
+            )
+        except LicenseError as error:
+            self.schedule_ui(
+                lambda message=str(error): self.revoke_device_access(message)
+            )
+
+    def show_license_gate(self, message):
+        if self._closing:
+            return
+        if self.license_window and self.license_window.winfo_exists():
+            self.license_status_label.config(text=message)
+            self.trial_checkout_button.config(state="normal")
+            self.paid_checkout_button.config(state="normal")
+            self.check_access_button.config(state="normal")
+            self.license_window.deiconify()
+            self.license_window.lift()
+            try:
+                self.license_window.grab_set()
+            except tk.TclError:
+                pass
+            return
+
+        colors = self.ui_colors
+        window = tk.Toplevel(self.root)
+        self.license_window = window
+        window.title("Lightning AI access")
+        window.geometry("430x360")
+        window.resizable(False, False)
+        window.configure(bg=colors["panel"])
+        window.transient(self.root)
+        window.attributes("-topmost", True)
+        window.protocol("WM_DELETE_WINDOW", self.hide_license_gate)
+        shell = tk.Frame(
+            window,
+            bg=colors["panel"],
+            padx=24,
+            pady=20,
+            highlightbackground=colors["border"],
+            highlightthickness=1,
+        )
+        shell.pack(expand=True, fill="both")
+        tk.Label(
+            shell,
+            text="LIGHTNING AI",
+            bg=colors["panel"],
+            fg=colors["accent"],
+            font=(self.ui_font, 9, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            shell,
+            text="Start using Lightning",
+            bg=colors["panel"],
+            fg=colors["text"],
+            font=(self.ui_font, 16, "bold"),
+        ).pack(anchor="w", pady=(8, 4))
+        tk.Label(
+            shell,
+            text=(
+                "No app account is needed. Dodo checkout asks for a billing email "
+                "and payment method. The 7-day trial then auto-renews at ₹999/month. "
+                "A hashed device ID is sent to enforce one trial per device."
+            ),
+            bg=colors["panel"],
+            fg=colors["muted"],
+            font=(self.ui_font, 9),
+            justify="left",
+            wraplength=378,
+        ).pack(anchor="w", pady=(0, 12))
+        tk.Label(
+            shell,
+            text="Billing email",
+            bg=colors["panel"],
+            fg=colors["text"],
+            font=(self.ui_font, 8, "bold"),
+        ).pack(anchor="w", pady=(0, 4))
+        self.license_email_entry = tk.Entry(
+            shell,
+            font=(self.ui_font, 10),
+            bg=colors["input"],
+            fg=colors["text"],
+            insertbackground=colors["accent"],
+            relief="flat",
+            bd=0,
+        )
+        self.license_email_entry.pack(fill="x", ipady=8, pady=(0, 10))
+        self.license_status_label = tk.Label(
+            shell,
+            text=message,
+            bg=colors["panel"],
+            fg=colors["warning"],
+            font=(self.ui_font, 8),
+            justify="left",
+            wraplength=378,
+        )
+        self.license_status_label.pack(anchor="w", fill="x", pady=(0, 10))
+        buttons = tk.Frame(shell, bg=colors["panel"])
+        buttons.pack(fill="x")
+        self.trial_checkout_button = RoundedActionButton(
+            buttons,
+            text="Start free 7-day trial",
+            command=lambda: self.start_device_checkout("trial"),
+            bg=colors["accent"],
+            fg=colors["button_text"],
+            activebackground=colors["accent2"],
+            activeforeground=colors["button_text"],
+            font=(self.ui_font, 8, "bold"),
+            width=174,
+            height=36,
+            padx=8,
+            accessible_name="Start free seven-day trial",
+        )
+        self.trial_checkout_button.pack(side="left", padx=(0, 6))
+        self.paid_checkout_button = RoundedActionButton(
+            buttons,
+            text="Subscribe · ₹999/mo",
+            command=lambda: self.start_device_checkout("subscription"),
+            bg=colors["panel_light"],
+            fg=colors["text"],
+            activebackground="#202d45",
+            activeforeground=colors["text"],
+            font=(self.ui_font, 8, "bold"),
+            width=160,
+            height=36,
+            padx=8,
+            accessible_name="Subscribe for 999 rupees per month",
+        )
+        self.paid_checkout_button.pack(side="left")
+        lower = tk.Frame(shell, bg=colors["panel"])
+        lower.pack(fill="x", pady=(10, 0))
+        self.check_access_button = tk.Button(
+            lower,
+            text="I've completed checkout — check access",
+            command=self.check_device_entitlement,
+            bg=colors["panel"],
+            fg=colors["accent2"],
+            activebackground=colors["panel"],
+            activeforeground=colors["text"],
+            relief="flat",
+            font=(self.ui_font, 8),
+            cursor="hand2",
+        )
+        self.check_access_button.pack(side="left")
+        tk.Button(
+            lower,
+            text="Later",
+            command=self.hide_license_gate,
+            bg=colors["panel"],
+            fg=colors["muted"],
+            activebackground=colors["panel"],
+            activeforeground=colors["text"],
+            relief="flat",
+            font=(self.ui_font, 8),
+            cursor="hand2",
+        ).pack(side="right")
+        try:
+            window.grab_set()
+            self.license_email_entry.focus_set()
+        except tk.TclError:
+            pass
+
+    def hide_license_gate(self):
+        if self.license_window and self.license_window.winfo_exists():
+            try:
+                self.license_window.grab_release()
+                self.license_window.withdraw()
+            except tk.TclError:
+                pass
+
+    def start_device_checkout(self, mode):
+        if not self.device_id:
+            self.license_status_label.config(
+                text="Could not identify this device. Restart the app and try again."
+            )
+            return
+        email = self.license_email_entry.get().strip()
+        if not email:
+            self.license_status_label.config(text="Enter the billing email for Dodo checkout.")
+            return
+        self.trial_checkout_button.config(state="disabled")
+        self.paid_checkout_button.config(state="disabled")
+        self.license_status_label.config(text="Preparing secure checkout…")
+        threading.Thread(
+            target=self.request_device_checkout,
+            args=(mode, email),
+            daemon=True,
+        ).start()
+
+    def request_device_checkout(self, mode, email):
+        try:
+            status, data = create_device_checkout(self.device_id, email, mode)
+            self.schedule_ui(
+                lambda response_status=status, result=data: self.handle_device_checkout(
+                    response_status, result
+                )
+            )
+        except LicenseError as error:
+            self.schedule_ui(lambda message=str(error): self.finish_checkout_error(message))
+
+    def finish_checkout_error(self, message):
+        if not self.license_window or not self.license_window.winfo_exists():
+            return
+        self.trial_checkout_button.config(state="normal")
+        self.paid_checkout_button.config(state="normal")
+        self.license_status_label.config(text=message)
+
+    def handle_device_checkout(self, status, data):
+        token = data.get("access_token")
+        if token:
+            try:
+                store_access_token(self.device_id, token)
+                self.access_token = token
+            except LicenseError as error:
+                self.finish_checkout_error(str(error))
+                return
+        if status == 409 and data.get("code") == "TRIAL_ALREADY_USED":
+            self.finish_checkout_error(
+                "This device has already used its free trial. Choose Subscribe to continue."
+            )
+            return
+        checkout_url = data.get("checkout_url")
+        parsed_checkout_url = (
+            urlparse(checkout_url) if isinstance(checkout_url, str) else None
+        )
+        if (
+            parsed_checkout_url
+            and parsed_checkout_url.scheme == "https"
+            and parsed_checkout_url.hostname
+            and (
+                parsed_checkout_url.hostname == "dodopayments.com"
+                or parsed_checkout_url.hostname.endswith(".dodopayments.com")
+            )
+        ):
+            try:
+                opened = webbrowser.open(checkout_url)
+            except (OSError, webbrowser.Error) as error:
+                self.finish_checkout_error(f"Could not open Dodo checkout: {error}")
+                return
+            self.license_status_label.config(
+                text=(
+                    "Complete secure checkout in your browser, then return here and "
+                    "check access. Your app access starts after the payment provider confirms it."
+                    if opened
+                    else f"Open this secure checkout URL in your browser: {checkout_url}"
+                )
+            )
+            self.trial_checkout_button.config(state="normal")
+            self.paid_checkout_button.config(state="normal")
+            return
+        if data.get("entitled"):
+            self.activate_device_entitlement(data)
+            return
+        self.finish_checkout_error(
+            data.get("error", "Checkout did not return a valid secure URL.")
+        )
+
+    def check_device_entitlement(self):
+        if not self.access_token:
+            self.license_status_label.config(
+                text="Start or continue checkout before checking access."
+            )
+            return
+        self.check_access_button.config(state="disabled")
+        self.license_status_label.config(text="Checking your subscription…")
+        threading.Thread(target=self.refresh_device_entitlement, daemon=True).start()
+
+    def activate_device_entitlement(self, data):
+        end = data.get("access_ends_at")
+        try:
+            expiry = datetime.fromisoformat(end.replace("Z", "+00:00")).timestamp()
+        except (AttributeError, TypeError, ValueError):
+            self.revoke_device_access("The billing service returned an invalid access expiry.")
+            return
+        if expiry <= time.time():
+            self.revoke_device_access("Your trial or subscription has expired.")
+            return
+
+        self.license_valid = True
+        self.license_expires_at = expiry
+        if self.license_window and self.license_window.winfo_exists():
+            try:
+                self.license_window.grab_release()
+                self.license_window.destroy()
+            except tk.TclError:
+                pass
+        self.license_window = None
+        self._set_assistant_state("Trial active" if data.get("plan") == "trial" else "Subscribed", self.ui_colors["success"])
+        if not self.license_workers_started:
+            self.license_workers_started = True
+            self.start_transcription_worker()
+            self.start_capture_worker()
+        if self.license_expiry_job:
+            self.root.after_cancel(self.license_expiry_job)
+        if self.license_refresh_job:
+            self.root.after_cancel(self.license_refresh_job)
+        remaining_ms = max(1, int((expiry - time.time()) * 1000))
+        self.license_expiry_job = self.schedule_ui(
+            self.expire_device_entitlement, delay=remaining_ms
+        )
+        self.license_refresh_job = self.schedule_ui(
+            self.refresh_license_periodically, delay=60_000
+        )
+
+    def _license_is_current(self):
+        if not self.license_valid:
+            return False
+        if self.license_expires_at is None or time.time() >= self.license_expires_at:
+            self.schedule_ui(self.expire_device_entitlement)
+            return False
+        return True
+
+    def expire_device_entitlement(self):
+        self.license_valid = False
+        self.license_expires_at = None
+        self.license_expiry_job = None
+        if self.is_recording:
+            self.toggle_recording()
+        self.show_license_gate(
+            "Your access has expired. Subscribe to continue using Lightning."
+        )
+        if self.access_token:
+            threading.Thread(target=self.refresh_device_entitlement, daemon=True).start()
+
+    def revoke_device_access(self, message):
+        self.license_valid = False
+        self.license_expires_at = None
+        if self.license_expiry_job:
+            self.root.after_cancel(self.license_expiry_job)
+            self.license_expiry_job = None
+        if self.license_refresh_job:
+            self.root.after_cancel(self.license_refresh_job)
+            self.license_refresh_job = None
+        if self.is_recording:
+            self.toggle_recording()
+        self.show_license_gate(message)
+
+    def refresh_license_periodically(self):
+        self.license_refresh_job = None
+        if self._closing:
+            return
+        if self.license_expires_at and time.time() >= self.license_expires_at:
+            self.expire_device_entitlement()
+            return
+        threading.Thread(target=self.refresh_device_entitlement, daemon=True).start()
 
     def setup_ui(self):
         available_fonts = self.root.tk.call("font", "families")
@@ -1211,6 +1625,9 @@ class LightningStealthAssistant:
             callback()
 
     def toggle_recording(self):
+        if not self.is_recording and not self._license_is_current():
+            self.show_license_gate("Start a trial or subscribe to use Lightning.")
+            return
         if not self.is_recording:
             self.is_recording = True
             self.start_ollama_warmup()
@@ -1295,8 +1712,13 @@ class LightningStealthAssistant:
             if os.name == "nt":
                 options["creationflags"] = subprocess.CREATE_NO_WINDOW
             try:
+                command = (
+                    [sys.executable, "--lightning-capture-worker"]
+                    if getattr(sys, "frozen", False)
+                    else [sys.executable, worker_path, "--serve"]
+                )
                 self.capture_process = subprocess.Popen(
-                    [sys.executable, worker_path, "--serve"],
+                    command,
                     **options,
                 )
             except Exception as error:
@@ -1416,8 +1838,13 @@ class LightningStealthAssistant:
             if os.name == "nt":
                 options["creationflags"] = subprocess.CREATE_NO_WINDOW
             try:
+                command = (
+                    [sys.executable, "--lightning-transcription-worker"]
+                    if getattr(sys, "frozen", False)
+                    else [sys.executable, worker_path, "--serve"]
+                )
                 self.transcription_process = subprocess.Popen(
-                    [sys.executable, worker_path, "--serve"], **options)
+                    command, **options)
             except Exception as error:
                 self.transcription_error = str(error)
                 self.schedule_ui(lambda msg=str(error): self.status_label.config(
@@ -1721,6 +2148,9 @@ class LightningStealthAssistant:
         self.root.destroy()
 
     def handle_text_query(self, event=None):
+        if not self._license_is_current():
+            self.show_license_gate("Start a trial or subscribe to use Lightning.")
+            return
         prompt = self.prompt_entry.get().strip()
         if not prompt or prompt == self.prompt_placeholder:
             return
@@ -1734,6 +2164,13 @@ class LightningStealthAssistant:
 
     def stream_ollama_response(self, prompt):
         try:
+            if not self._license_is_current():
+                self.schedule_ui(
+                    lambda: self.show_license_gate(
+                        "Your access has expired. Subscribe to continue using Lightning."
+                    )
+                )
+                return
             self.schedule_ui(lambda: self.status_label.config(text="Status: Checking Ollama...", fg=self.ui_colors["warning"]))
             ensure_ollama_ready()
             if self.ollama_warmup_started and not self.ollama_warmup_ready.wait(timeout=10):
@@ -1817,6 +2254,9 @@ Make the answer easy to say aloud. Use "I would" for hypothetical steps and neve
                 pending_display = ""
                 display_started = False
                 for line in response.iter_lines():
+                    if not self._license_is_current():
+                        response.close()
+                        return
                     if line:
                         body = json.loads(line.decode('utf-8'))
                         if body.get("error"):
@@ -1883,6 +2323,22 @@ Make the answer easy to say aloud. Use "I would" for hypothetical steps and neve
         self._animate_equalizer()
 
 if __name__ == "__main__":
-    root = tk.Tk()
-    app = LightningStealthAssistant(root)
-    root.mainloop()
+    worker_mode = sys.argv[1] if len(sys.argv) > 1 else ""
+    if worker_mode == "--lightning-capture-worker":
+        import capture_worker
+
+        sys.argv = [sys.argv[0], "--serve"]
+        try:
+            capture_worker.main()
+        except Exception as error:
+            print(f"Audio capture worker error: {error}", file=sys.stderr)
+            raise SystemExit(1) from error
+    elif worker_mode == "--lightning-transcription-worker":
+        import transcribe_worker
+
+        sys.argv = [sys.argv[0], "--serve"]
+        transcribe_worker.main()
+    else:
+        root = tk.Tk()
+        app = LightningStealthAssistant(root)
+        root.mainloop()
