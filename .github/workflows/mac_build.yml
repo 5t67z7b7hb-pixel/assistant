@@ -27,6 +27,18 @@ jobs:
         run: |
           pyinstaller -y LightningAssistant.spec
 
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build Windows Installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" dist\installer.iss'
+
+      - name: Archive Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-Installer
+          path: dist/Output/AIInterviewHelperSetup.exe
+
       - name: Archive Windows Build
         uses: actions/upload-artifact@v4
         with:
@@ -54,7 +66,10 @@ jobs:
           pyinstaller -y LightningAssistant.spec
 
       - name: Archive macOS Build
+        run: ditto -c -k --sequesterRsrc --keepParent dist/LightningAssistant LightningAssistant-macOS-Portable.zip
+
+      - name: Upload macOS Archive
         uses: actions/upload-artifact@v4
         with:
           name: macOS-Portable-Build
-          path: dist/LightningAssistant/
+          path: LightningAssistant-macOS-Portable.zip
