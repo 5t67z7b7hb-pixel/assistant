@@ -12,7 +12,7 @@ SolidCompression=yes
 PrivilegesRequired=lowest
 
 [Files]
-Source: "dist\LightningAssistant\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "LightningAssistant\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\AI Mock Interview Helper"; Filename: "{app}\LightningAssistant.exe"
